@@ -88,7 +88,7 @@ def test_main_processes_more_than_one_url(monkeypatch, tmp_path, capsys):
     assert "Output bitrate: 160 kbps CBR" in output
     assert "Enter YouTube URL" not in output
     assert output.index("url <link>") < output.index("TimbreDrop")
-    assert prompts[0].startswith("(>_ ytmp3)")
+    assert prompts[0].startswith("ytmp3")
     assert (output_dir / "First.mp3").exists()
     assert (output_dir / "Second.mp3").exists()
 

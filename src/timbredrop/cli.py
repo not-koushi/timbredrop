@@ -460,7 +460,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     while True:
         try:
-            raw_command = input(f"{_color('(>_ ytmp3)', CYAN)} ").strip()
+            raw_command = input(f"{_color('ytmp3', CYAN)} ").strip()
         except EOFError:
             print("\nGoodbye.")
             return 0
