@@ -258,3 +258,55 @@ def test_editor_environment_is_fallback_for_headless_session(monkeypatch, tmp_pa
 
     assert cli._open_config_file(target) is True
     assert calls == [["/usr/bin/nano", str(target)]]
+
+
+def test_frozen_linux_external_process_restores_original_library_path(monkeypatch):
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/pyinstaller-extract")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
+
+    child_env = cli._external_process_env()
+
+    assert child_env["LD_LIBRARY_PATH"] == "/usr/lib:/usr/local/lib"
+    assert "LD_LIBRARY_PATH_ORIG" not in child_env
+    # Building an external environment must not mutate the parent process.
+    assert cli.os.environ["LD_LIBRARY_PATH"] == "/tmp/pyinstaller-extract"
+
+
+def test_frozen_linux_external_process_unsets_bundled_path_when_no_original(monkeypatch):
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/pyinstaller-extract")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "")
+
+    child_env = cli._external_process_env()
+
+    assert "LD_LIBRARY_PATH" not in child_env
+    assert "LD_LIBRARY_PATH_ORIG" not in child_env
+
+
+def test_frozen_linux_default_editor_receives_clean_child_environment(monkeypatch, tmp_path):
+    target = tmp_path / "config.toml"
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/pyinstaller-extract")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib")
+    launched = []
+    monkeypatch.setattr(
+        cli.shutil,
+        "which",
+        lambda name: "/usr/bin/xdg-open" if name == "xdg-open" else None,
+    )
+    monkeypatch.setattr(
+        cli.subprocess,
+        "Popen",
+        lambda args, **kwargs: launched.append((args, kwargs)),
+    )
+
+    assert cli._open_with_system_default(
+        target, operating_system="posix", platform_name="linux"
+    ) is True
+    assert launched[0][1]["env"]["LD_LIBRARY_PATH"] == "/usr/lib"
+    assert "LD_LIBRARY_PATH_ORIG" not in launched[0][1]["env"]

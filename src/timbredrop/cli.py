@@ -196,6 +196,25 @@ def _process_one(
     return result
 
 
+def _external_process_env() -> dict[str, str]:
+    """Return a safe environment for OS tools launched from the frozen app.
+
+    PyInstaller modifies ``LD_LIBRARY_PATH`` on Linux so the bundled executable
+    can load its private libraries. External desktop tools such as xdg-open,
+    gio, and Kate must not inherit that private path: it can make system apps
+    load incompatible bundled libraries and fail to open. Restore the original
+    value for child processes while leaving TimbreDrop's own environment intact.
+    """
+    env = os.environ.copy()
+    if sys.platform.startswith("linux") and getattr(sys, "frozen", False):
+        original_library_path = env.pop("LD_LIBRARY_PATH_ORIG", None)
+        if original_library_path:
+            env["LD_LIBRARY_PATH"] = original_library_path
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 def _open_with_system_default(
     path: Path,
     *,
@@ -234,6 +253,7 @@ def _open_with_system_default(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=_external_process_env(),
             )
             return True
         except OSError as exc:
@@ -253,6 +273,7 @@ def _open_with_system_default(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=_external_process_env(),
             )
             return True
         except OSError as exc:
@@ -271,6 +292,7 @@ def _open_with_system_default(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=_external_process_env(),
             )
             return True
         except OSError as exc:
@@ -294,7 +316,11 @@ def _launch_config_editor_setting(path: Path, setting: str, variable_name: str) 
         return False
     try:
         # Terminal editors run in the foreground so users can save and return.
-        subprocess.run([executable, *command[1:], str(path)], check=False)
+        subprocess.run(
+            [executable, *command[1:], str(path)],
+            check=False,
+            env=_external_process_env(),
+        )
         return True
     except OSError as exc:
         print(f"Could not launch editor {command[0]}: {exc}", file=sys.stderr)
@@ -335,7 +361,11 @@ def _open_config_file(path: Path) -> bool:
             executable = shutil.which(editor_name)
             if executable:
                 try:
-                    subprocess.run([executable, str(path)], check=False)
+                    subprocess.run(
+                        [executable, str(path)],
+                        check=False,
+                        env=_external_process_env(),
+                    )
                     return True
                 except OSError as exc:
                     print(f"Could not launch editor {editor_name}: {exc}", file=sys.stderr)
@@ -347,7 +377,7 @@ def _open_config_file(path: Path) -> bool:
         executable = shutil.which("notepad.exe") or shutil.which("notepad")
         if executable:
             try:
-                subprocess.Popen([executable, str(path)])
+                subprocess.Popen([executable, str(path)], env=_external_process_env())
                 return True
             except OSError as exc:
                 print(f"Could not launch Notepad: {exc}", file=sys.stderr)
