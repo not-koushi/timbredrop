@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -21,6 +24,10 @@ from timbredrop.media import (
     transcode_mp3,
 )
 from timbredrop.urls import validate_youtube_url
+
+
+CYAN = "36"
+GRAY = "90"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -43,12 +50,30 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _color(text: str, tone: str) -> str:
+    """Apply a restrained ANSI accent only for interactive terminals."""
+    if not sys.stdout.isatty() or "NO_COLOR" in os.environ or os.environ.get("TERM") == "dumb":
+        return text
+    return f"\033[{tone}m{text}\033[0m"
+
+
+def _print_commands() -> None:
+    print("Commands:")
+    print(f"  {_color('url <link>', CYAN)}    download and convert a YouTube video's audio")
+    print(f"  {_color('path', CYAN)}          show or change the output location")
+    print(f"  {_color('exit', CYAN)}          quit TimbreDrop")
+    print()
+
+
 def _yes_no(prompt: str, default: bool = False) -> bool:
-    choice_hint = "Y/n" if default else "y/N"
+    choice_hint = "Y/n" if default else "Y/N"
     while True:
         try:
             answer = input(f"{prompt} [{choice_hint}]: ").strip().lower()
         except EOFError:
+            return False
+        except KeyboardInterrupt:
+            print()
             return False
         if not answer:
             return default
@@ -68,6 +93,9 @@ def _choose_bitrate(default: int) -> int:
         try:
             answer = input(f"Bitrate [{default}]: ").strip()
         except EOFError:
+            return default
+        except KeyboardInterrupt:
+            print()
             return default
         if not answer:
             return default
@@ -168,6 +196,120 @@ def _process_one(
     return result
 
 
+def _open_config_file(path: Path) -> bool:
+    """Open the config in an available editor without invoking a shell.
+
+    Returns True when an editor command was launched. GUI openers may return
+    before the file is saved; config is therefore refreshed before each command.
+    """
+    editor_setting = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if editor_setting:
+        try:
+            command = shlex.split(editor_setting)
+        except ValueError as exc:
+            print(f"Invalid VISUAL/EDITOR setting: {exc}", file=sys.stderr)
+            return False
+        if command:
+            executable = shutil.which(command[0])
+            if executable:
+                try:
+                    subprocess.run([executable, *command[1:], str(path)], check=False)
+                    return True
+                except OSError as exc:
+                    print(f"Could not launch editor: {exc}", file=sys.stderr)
+                    return False
+            print(f"Editor not found: {command[0]}. Check VISUAL or EDITOR.", file=sys.stderr)
+            return False
+
+    if os.name == "nt":
+        executable = shutil.which("notepad.exe") or shutil.which("notepad")
+        if executable:
+            subprocess.run([executable, str(path)], check=False)
+            return True
+    elif sys.platform == "darwin":
+        executable = shutil.which("open")
+        if executable:
+            subprocess.run([executable, "-W", "-t", str(path)], check=False)
+            return True
+    else:
+        for editor_name in ("nano", "micro", "vim", "vi"):
+            executable = shutil.which(editor_name)
+            if executable:
+                subprocess.run([executable, str(path)], check=False)
+                return True
+
+        opener = shutil.which("xdg-open")
+        if opener:
+            try:
+                subprocess.Popen(
+                    [opener, str(path)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                print("Opened the config in your desktop editor. Save it, then return here.")
+                return True
+            except OSError as exc:
+                print(f"Could not open the config file: {exc}", file=sys.stderr)
+                return False
+
+    print(f"No editor was found. Set EDITOR, then run 'path' again.\nConfig: {path}")
+    return False
+
+
+def _handle_path_command(output_dir: Path) -> None:
+    target = config_path()
+    print(f"Current output directory: {output_dir}")
+    if not _yes_no("Would you like to change it?", default=False):
+        return
+
+    try:
+        if not target.exists():
+            write_default_config(target)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        print(f"Could not create the configuration file: {exc}", file=sys.stderr)
+        return
+
+    print(f"Opening configuration file: {target}")
+    opened = _open_config_file(target)
+    if opened:
+        print("Changes are picked up before the next command. Set output_dir in this file.")
+
+
+def _run_url_command(
+    raw_url: str,
+    config: Any,
+    output_dir: Path,
+) -> None:
+    try:
+        url = validate_youtube_url(raw_url)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return
+
+    try:
+        print("Checking video metadata…")
+        info = fetch_video_info(url)
+        if not _check_duration(info, config.duration_warning_minutes):
+            print("Skipped.")
+            return
+        bitrate = _choose_bitrate(config.default_bitrate)
+        result = _process_one(url, info, bitrate, output_dir, config.preserve_metadata)
+        print("\nSuccess: MP3 created")
+        print(f"  Title: {_safe_terminal_text(info.get('title'), result.stem)}")
+        print(f"  Output bitrate: {bitrate} kbps CBR")
+        print(f"  File: {result.resolve()}")
+        print(f"  Size: {format_bytes(result.stat().st_size)}")
+        print("  Note: the output bitrate does not restore quality absent from the source stream.")
+    except (TimbreDropError, OSError) as exc:
+        print(f"\nError: {exc}", file=sys.stderr)
+    except KeyboardInterrupt:
+        print("\nCancelled by user.")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.show_config:
@@ -187,8 +329,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     config, warnings = load_config()
+    reported_warnings: set[str] = set()
     for warning in warnings:
         print(f"Warning: {warning}", file=sys.stderr)
+        reported_warnings.add(warning)
 
     try:
         check_dependencies()
@@ -203,50 +347,66 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    output_dir = args.output_dir.expanduser() if args.output_dir else config.output_dir
-    print(f"TimbreDrop {__version__} — YouTube audio to MP3")
-    print(f"Output directory: {output_dir}")
-    print("Use only content you own, have permission to download, or may lawfully save.")
-    print("Enter a URL below. Press Enter on an empty line to quit.\n")
+    output_override = args.output_dir.expanduser() if args.output_dir else None
+    output_dir = output_override or config.output_dir
+
+    _print_commands()
+    print(f"{_color('TimbreDrop', CYAN)} {_color(__version__, GRAY)} — YouTube audio to MP3")
+    print(f"Output directory: {_color(str(output_dir), CYAN)}")
+    legal_note = "Use only content you own, have permission to download, or may lawfully save."
+    print(_color(legal_note, GRAY))
+    print("\nEnter a command below. Use 'help' to show the commands again.\n")
 
     while True:
         try:
-            raw_url = input("Enter YouTube URL: ").strip()
+            raw_command = input(f"{_color('(ytmp3)', CYAN)} ").strip()
         except EOFError:
             print("\nGoodbye.")
             return 0
         except KeyboardInterrupt:
             print("\nGoodbye.")
             return 130
-        if not raw_url:
-            print("Goodbye.")
-            return 0
 
-        try:
-            url = validate_youtube_url(raw_url)
-        except ValueError as exc:
-            print(f"Error: {exc}\n")
+        # Reload config after the user returns from a possibly external editor.
+        fresh_config, fresh_warnings = load_config()
+        config = fresh_config
+        for warning in fresh_warnings:
+            if warning not in reported_warnings:
+                print(f"Warning: {warning}", file=sys.stderr)
+                reported_warnings.add(warning)
+        previous_output_dir = output_dir
+        output_dir = output_override or config.output_dir
+        if output_dir != previous_output_dir:
+            print(f"Output directory updated: {_color(str(output_dir), CYAN)}")
+
+        if not raw_command:
             continue
 
-        try:
-            print("Checking video metadata…")
-            info = fetch_video_info(url)
-            if not _check_duration(info, config.duration_warning_minutes):
-                print("Skipped.\n")
+        command, separator, argument = raw_command.partition(" ")
+        command = command.casefold()
+        argument = argument.strip() if separator else ""
+
+        if command in {"exit", "quit"}:
+            print("Goodbye.")
+            return 0
+        if command == "help":
+            _print_commands()
+            print("Use 'path' to edit config.toml; use 'url <link>' to process a video.")
+            continue
+        if command == "path":
+            _handle_path_command(output_dir)
+            if output_override is not None:
+                print("Note: --output-dir overrides the config path for this session.")
+            continue
+        if command == "url":
+            if not argument:
+                print("Usage: url <YouTube-URL>")
                 continue
-            bitrate = _choose_bitrate(config.default_bitrate)
-            result = _process_one(url, info, bitrate, output_dir, config.preserve_metadata)
-            print("\nSuccess: MP3 created")
-            print(f"  Title: {_safe_terminal_text(info.get('title'), result.stem)}")
-            print(f"  Output bitrate: {bitrate} kbps CBR")
-            print(f"  File: {result.resolve()}")
-            print(f"  Size: {format_bytes(result.stat().st_size)}")
-            print("  Note: the output bitrate does not restore quality absent from the source stream.")
-        except (TimbreDropError, OSError) as exc:
-            print(f"\nError: {exc}", file=sys.stderr)
-        except KeyboardInterrupt:
-            print("\nCancelled by user.")
-        print("\n")
+            _run_url_command(argument, config, output_dir)
+            print()
+            continue
+
+        print("Unknown command. Use 'help' to see the available commands.")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ A minimal, cross-platform command-line application for extracting audio from one
 - Uses platform-specific configuration directories and the user's Downloads directory by default.
 - Sanitizes filenames, avoids silently overwriting an existing MP3, and cleans up temporary files.
 - Keeps YouTube extraction and audio conversion as separate steps for clearer errors and progress.
+- Provides a compact command shell with `url <link>`, `path`, and `exit` commands.
+- Uses a restrained cyan-and-gray terminal accent when supported; respects `NO_COLOR`.
 
 ## Requirements
 
@@ -68,16 +70,30 @@ Install Python 3.11+, FFmpeg and Deno (for example, using Homebrew), then follow
 
 ## Usage
 
+Start the interactive shell:
+
 ```bash
 ytmp3
 ```
 
-The actual command contains no spaces: `ytmp3`.
+The shell displays its available commands, version, current output directory, and legal reminder before showing the `(>_ ytmp3)` prompt.
 
-1. Enter a supported YouTube video URL. Press Enter on an empty line to exit.
-2. Review the video's title and duration. Long or unknown durations require confirmation.
-3. Choose an output bitrate. Press Enter to accept the configured default (256 kbps).
-4. Wait for download and conversion progress. The completed file path and file size are printed at the end.
+| Command | Action |
+|---|---|
+| `url <YouTube-URL>` | Validate the URL, inspect video metadata, select a bitrate, then download and convert the audio. |
+| `path` | Show the current output directory and offer to open the configuration file for editing. |
+| `exit` | Quit the shell. |
+| `help` | Print the command list again. |
+
+Example:
+
+```text
+(>_ ytmp3) url https://youtu.be/VIDEO_ID
+```
+
+After each conversion, TimbreDrop returns to the shell so another URL can be processed. Follow the prompts to confirm long or unknown durations and choose an output bitrate. Press Enter to accept the configured bitrate (256 kbps by default).
+
+The shell uses a muted cyan-and-gray accent only when stdout is an interactive terminal. Set `NO_COLOR=1` to disable ANSI colors. On Arch Linux, set `EDITOR=nano` (or your preferred editor) in the environment if you want `path` to open a terminal editor. If no terminal editor is configured, TimbreDrop tries the platform's usual text editor.
 
 Override the output directory for one session:
 
@@ -122,7 +138,7 @@ duration_warning_minutes = 30
 preserve_metadata = true
 ```
 
-An empty `output_dir` uses the user's Downloads directory under a `TimbreDrop` folder. `default_bitrate` must be `96`, `128`, `160`, or `256`. Invalid values fall back to defaults with a warning.
+An empty `output_dir` uses the user's Downloads directory under a `TimbreDrop` folder. `default_bitrate` must be `96`, `128`, `160`, or `256`. Invalid values fall back to defaults with a warning. The interactive `path` command opens this file for editing after confirmation; changes are reloaded before the next shell command. If you launched with `--output-dir`, that command-line override remains active until the process exits.
 
 ## Audio quality and bitrate
 
@@ -130,7 +146,7 @@ The selected bitrate is the output MP3's CBR target; it does **not** describe or
 
 ## Platform verification status
 
-Linux unit tests and an FFmpeg MP3-encoding smoke test have been run in the development environment. YouTube extraction has not yet been live-tested from the maintainers' environment. Windows and macOS are not yet verified; do not treat their install instructions as a tested release. Cross-platform CI and packaged binaries are planned for later phases.
+The Linux unit test suite and FFmpeg MP3-encoding smoke tests have been run in the development environment. At least one user has verified that the interactive shell starts on Arch Linux; a complete live download should still be checked on each machine before relying on it. Windows and macOS are not yet verified; do not treat their install instructions as a tested release. Cross-platform CI and packaged binaries are planned for later phases.
 
 ## Troubleshooting
 

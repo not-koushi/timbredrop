@@ -1,7 +1,7 @@
 import pytest
 
 from timbredrop import cli
-from timbredrop.config import AppConfig
+from timbredrop.config import AppConfig, load_config as real_load_config
 
 
 def test_choose_bitrate_accepts_exact_value(monkeypatch):
@@ -40,12 +40,21 @@ def test_unknown_duration_requires_confirmation(monkeypatch, duration):
     assert prompts == ["Continue anyway?"]
 
 
-def test_main_processes_more_than_one_url(monkeypatch, tmp_path, capsys):
+def _stub_startup(monkeypatch, tmp_path):
     output_dir = tmp_path / "audio"
     config = AppConfig(output_dir=output_dir, default_bitrate=256, duration_warning_minutes=30)
     monkeypatch.setattr(cli, "load_config", lambda: (config, []))
     monkeypatch.setattr(cli, "check_dependencies", lambda: ("/usr/bin/ffmpeg", "/usr/bin/ffprobe"))
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/deno" if name == "deno" else f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        cli.shutil,
+        "which",
+        lambda name: "/usr/bin/deno" if name == "deno" else f"/usr/bin/{name}",
+    )
+    return output_dir
+
+
+def test_main_processes_more_than_one_url(monkeypatch, tmp_path, capsys):
+    output_dir = _stub_startup(monkeypatch, tmp_path)
     monkeypatch.setattr(
         cli,
         "fetch_video_info",
@@ -61,22 +70,75 @@ def test_main_processes_more_than_one_url(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "_process_one", fake_process)
     answers = iter(
         [
-            "https://youtu.be/first123",
+            "url https://youtu.be/first123",
             "96",
-            "https://youtu.be/second1",
+            "url https://youtu.be/second1",
             "3",
-            "",
+            "exit",
         ]
     )
-    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or next(answers))
 
     assert cli.main([]) == 0
     output = capsys.readouterr().out
     assert output.count("Success: MP3 created") == 2
     assert "Output bitrate: 96 kbps CBR" in output
     assert "Output bitrate: 160 kbps CBR" in output
+    assert "Enter YouTube URL" not in output
+    assert output.index("url <link>") < output.index("TimbreDrop")
+    assert prompts[0].startswith("(>_ ytmp3)")
     assert (output_dir / "First.mp3").exists()
     assert (output_dir / "Second.mp3").exists()
+
+
+def test_shell_lists_commands_and_exits(monkeypatch, tmp_path, capsys):
+    _stub_startup(monkeypatch, tmp_path)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "exit")
+
+    assert cli.main([]) == 0
+    output = capsys.readouterr().out
+    assert "url <link>" in output
+    assert "path" in output
+    assert "exit" in output
+    assert "Use only content you own" in output
+    assert "Goodbye." in output
+
+
+def test_url_command_requires_an_argument(monkeypatch, tmp_path, capsys):
+    _stub_startup(monkeypatch, tmp_path)
+    answers = iter(["url", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    assert cli.main([]) == 0
+    assert "Usage: url <YouTube-URL>" in capsys.readouterr().out
+
+
+def test_path_command_opens_config_and_reloads_new_output_path(monkeypatch, tmp_path, capsys):
+    config_file = tmp_path / "config.toml"
+    new_output = tmp_path / "new-audio"
+    monkeypatch.setattr(cli, "config_path", lambda: config_file)
+    monkeypatch.setattr(cli, "load_config", lambda: real_load_config(config_file))
+    monkeypatch.setattr(cli, "check_dependencies", lambda: ("/usr/bin/ffmpeg", "/usr/bin/ffprobe"))
+    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_open(path):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace('output_dir = ""', f'output_dir = "{new_output.as_posix()}"'),
+            encoding="utf-8",
+        )
+        return True
+
+    monkeypatch.setattr(cli, "_open_config_file", fake_open)
+    answers = iter(["path", "y", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    assert cli.main([]) == 0
+    output = capsys.readouterr().out
+    assert f"Opening configuration file: {config_file}" in output
+    assert f"Output directory updated: {new_output}" in output
+    assert f'output_dir = "{new_output.as_posix()}"' in config_file.read_text(encoding="utf-8")
 
 
 def test_show_config_prints_path_without_external_dependencies(monkeypatch, capsys, tmp_path):
@@ -88,3 +150,8 @@ def test_show_config_prints_path_without_external_dependencies(monkeypatch, caps
 
 def test_safe_terminal_text_removes_control_characters():
     assert cli._safe_terminal_text("title\x1b[31m\nnext") == "title[31mnext"
+
+
+def test_color_respects_no_color_environment(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert cli._color("hello", cli.CYAN) == "hello"
