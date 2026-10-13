@@ -1,0 +1,14 @@
+# TimbreDrop configuration template.
+# Copy this file to the config path reported by `ytmp3 --show-config` once the CLI is implemented.
+
+# Leave empty to use the platform's default Downloads directory / TimbreDrop.
+output_dir = ""
+
+# Allowed values: 96, 128, 160, 256. Default: 256 kbps CBR.
+default_bitrate = 256
+
+# Warn and ask for confirmation when a video exceeds this duration.
+duration_warning_minutes = 30
+
+# Preserve title and other useful metadata where available.
+preserve_metadata = true
