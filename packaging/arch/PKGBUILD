@@ -12,7 +12,7 @@ checkdepends=('python-pytest')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/not-koushi/timbredrop/archive/refs/tags/v${pkgver}.tar.gz")
 # TEMPORARY for the first package build. Replace SKIP with the verified source
 # archive SHA-256 before submitting this recipe to the AUR.
-sha256sums=('SKIP')
+sha256sums=('ef8f2b9f033697a33d0783c4b17bc1dc3f1176baed7a3a8b93f21104bf7629a0')
 
 build() {
   cd "$srcdir/timbredrop-$pkgver"
