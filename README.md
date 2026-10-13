@@ -31,14 +31,29 @@ YouTube extraction can change over time. The latest yt-dlp version, its default 
 
 ### Arch Linux
 
+The intended end-user installation is an AUR package, so the eventual workflow
+will be:
+
+```bash
+yay -S timbredrop
+ytmp3
+```
+
+**The AUR package is not published yet**, so that command will not work until
+publication. Do not use `sudo pacman -S timbredrop`: the package is not in the
+official Arch repositories. Maintainers should follow
+[`packaging/arch/README.md`](packaging/arch/README.md) to test the PKGBUILD first.
+
+The Arch package contains only the Python application and documentation. It
+uses system packages for `yt-dlp`, FFmpeg/FFprobe, Deno, Python and
+`platformdirs`; it does not download or install the 20–40 MB portable ZIP.
+
+For development from a checkout:
+
 ```bash
 sudo pacman -Syu --needed git python python-pip ffmpeg deno
-
-git clone https://github.com/not-koushi/timbredrop.git
-cd timbredrop
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 

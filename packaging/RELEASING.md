@@ -1,20 +1,29 @@
 # Maintainer release checklist
 
-Use this checklist for every binary release. Do not create a release tag until the source changes below are pushed and CI is green.
+## Source/AUR version release
 
-1. Apply and review the packaging changes locally.
+1. Update `pyproject.toml`, `src/timbredrop/__init__.py`, and `CHANGELOG.md` to
+   the same version.
 2. Run `pytest -q`, `ruff check .`, and `python -m build --wheel`.
-3. Commit and push the complete source tree to `main`; confirm the GitHub Actions CI workflow passes on all operating systems.
-4. Verify that `pyproject.toml`, `src/timbredrop/__init__.py`, and `scripts/smoke_executable.py` contain the intended release version (for example, `0.1.3`).
-5. Create and push the tag:
+3. Commit and push source plus packaging changes to `main`; confirm the CI
+   workflow passes.
+4. Check that the Arch PKGBUILD targets the same `v<version>` source tag.
+5. Push the matching source tag (for this packaging preparation, `v0.1.4`).
+6. Verify the source tag and build the Arch package locally before AUR
+   submission. The AUR recipe must contain a real SHA-256 checksum, not `SKIP`.
 
-   ```bash
-   git tag -a v0.1.3 -m "TimbreDrop 0.1.3"
-   git push origin v0.1.3
-   ```
+## Optional standalone binary release
 
-6. The release workflow builds native one-file executables on Linux, Windows, macOS Intel, and macOS Apple Silicon. Each executable must pass its `--version` smoke test. The publish job attaches each platform ZIP to a GitHub release.
-7. Open the Actions tab and verify the `Release binaries` workflow and the generated GitHub release. Do not claim downloads are available unless the workflow succeeds.
-8. For the Arch package, copy `packaging/arch/PKGBUILD` into a separate packaging directory, run `makepkg --syncdeps --cleanbuild`, inspect the package, and only then consider an AUR submission.
+The standalone ZIPs bundle a Python runtime and yt-dlp resources, so they are
+much larger than the pure-Python Arch package. Tags no longer automatically
+build/publish these ZIPs. To intentionally publish native standalone binaries
+for an existing version tag, manually dispatch the **Release binaries** workflow
+on that tag, for example:
 
-The release archives bundle the Python CLI, yt-dlp, and yt-dlp-ejs. FFmpeg/FFprobe and Deno remain separately installed runtime dependencies. Cross-platform unit tests and a `--version` smoke test do not prove that live YouTube extraction works on every platform; manually test a permitted video on each target OS before making stronger claims.
+```bash
+gh workflow run release.yml --ref v0.1.4
+```
+
+The workflow builds on each target operating system. A successful build and a
+`--version` smoke test do not prove that live YouTube extraction works on every
+platform; test a permitted video on each OS before making stronger claims.
