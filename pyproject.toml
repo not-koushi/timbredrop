@@ -27,6 +27,9 @@ dependencies = [
   "platformdirs>=4.2",
 ]
 
+[project.scripts]
+ytmp3 = "timbredrop.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "build>=1.2",

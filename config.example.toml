@@ -1,7 +1,7 @@
 # TimbreDrop configuration template.
-# Copy this file to the config path reported by `ytmp3 --show-config` once the CLI is implemented.
+# Run `ytmp3 --init-config` to create this file at the platform-specific config path.
 
-# Leave empty to use the platform's default Downloads directory / TimbreDrop.
+# Leave empty to use the platform's Downloads/TimbreDrop directory.
 output_dir = ""
 
 # Allowed values: 96, 128, 160, 256. Default: 256 kbps CBR.
