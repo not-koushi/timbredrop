@@ -1,6 +1,6 @@
 # Maintainer: TimbreDrop contributors
 pkgname=timbredrop
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc='Minimal cross-platform YouTube audio-to-MP3 CLI'
 arch=('any')

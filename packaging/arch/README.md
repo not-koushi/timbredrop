@@ -4,7 +4,7 @@ This `PKGBUILD` builds TimbreDrop from the tagged upstream source. It is intende
 
 ## Prerequisite
 
-The source tag matching `pkgver` must already exist in `not-koushi/timbredrop`. The packaging recipe currently targets `v0.1.2`. Publish the updated `0.1.2` source to GitHub and create the `v0.1.2` tag before building this recipe.
+The source tag matching `pkgver` must already exist in `not-koushi/timbredrop`. The packaging recipe targets the version set in `PKGBUILD`. Publish that source version to GitHub and create the matching tag before building this recipe.
 
 ## Local build
 
@@ -20,7 +20,7 @@ Inspect and install the package you built:
 
 ```bash
 less PKGBUILD
-sudo pacman -U ./timbredrop-0.1.2-1-any.pkg.tar.zst
+sudo pacman -U ./timbredrop-0.1.3-1-any.pkg.tar.zst
 ```
 
 The installed package depends on Arch's `yt-dlp` package (which supplies `yt-dlp-ejs` as a dependency), FFmpeg, Deno and `python-platformdirs`. Recheck dependency names and versions on a fully updated Arch system before building.
@@ -28,7 +28,7 @@ The installed package depends on Arch's `yt-dlp` package (which supplies `yt-dlp
 To validate package metadata:
 
 ```bash
-namcap PKGBUILD timbredrop-0.1.2-1-any.pkg.tar.zst
+namcap PKGBUILD timbredrop-0.1.3-1-any.pkg.tar.zst
 ```
 
 ## AUR publication

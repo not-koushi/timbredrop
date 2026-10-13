@@ -1,16 +1,16 @@
 # Maintainer release checklist
 
-This repository is prepared for the first tagged binary release. Do not create a release tag until the source changes below are pushed and CI is green.
+Use this checklist for every binary release. Do not create a release tag until the source changes below are pushed and CI is green.
 
 1. Apply and review the packaging changes locally.
 2. Run `pytest -q`, `ruff check .`, and `python -m build --wheel`.
 3. Commit and push the complete source tree to `main`; confirm the GitHub Actions CI workflow passes on all operating systems.
-4. Verify that `pyproject.toml` and `src/timbredrop/__init__.py` both contain the intended release version `0.1.2`.
+4. Verify that `pyproject.toml`, `src/timbredrop/__init__.py`, and `scripts/smoke_executable.py` contain the intended release version (for example, `0.1.3`).
 5. Create and push the tag:
 
    ```bash
-   git tag -a v0.1.2 -m "TimbreDrop 0.1.2"
-   git push origin v0.1.2
+   git tag -a v0.1.3 -m "TimbreDrop 0.1.3"
+   git push origin v0.1.3
    ```
 
 6. The release workflow builds native one-file executables on Linux, Windows, macOS Intel, and macOS Apple Silicon. Each executable must pass its `--version` smoke test. The publish job attaches each platform ZIP to a GitHub release.

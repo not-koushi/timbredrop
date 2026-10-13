@@ -25,7 +25,7 @@ def main() -> int:
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
-    expected = "TimbreDrop 0.1.2"
+    expected = "TimbreDrop 0.1.3"
     if expected not in result.stdout:
         raise SystemExit(
             f"Unexpected version output. Expected {expected!r}; got {result.stdout!r}."
