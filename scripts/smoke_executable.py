@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tomllib
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
-    executable = Path("dist") / ("ytmp3.exe" if os.name == "nt" else "ytmp3")
+    executable = ROOT / "dist" / (
+        "ytmp3.exe" if os.name == "nt" else "ytmp3"
+    )
     if not executable.is_file():
         raise SystemExit(f"Packaged executable not found: {executable}")
 
     result = subprocess.run(
-        [str(executable.resolve()), "--version"],
+        [str(executable), "--version"],
         check=False,
         capture_output=True,
         text=True,
@@ -25,11 +30,17 @@ def main() -> int:
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
-    expected = "TimbreDrop 0.1.3"
+    project = tomllib.loads(
+        (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    expected = f"TimbreDrop {project['project']['version']}"
+
     if expected not in result.stdout:
         raise SystemExit(
-            f"Unexpected version output. Expected {expected!r}; got {result.stdout!r}."
+            f"Unexpected version output. Expected {expected!r}; "
+            f"got {result.stdout!r}."
         )
+
     print(result.stdout.strip())
     return 0
 

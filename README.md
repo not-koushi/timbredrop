@@ -196,11 +196,11 @@ TimbreDrop is released under the MIT License. See [LICENSE](LICENSE). Third-part
 
 ### Standalone executables
 
-Tagged releases trigger the GitHub Actions workflow in `.github/workflows/release.yml`. It builds a console executable natively on Linux, Windows, and macOS, smoke-tests its version output, and attaches per-platform ZIP archives to the GitHub release. Native builds are used because PyInstaller executables are OS-specific; CPU architecture depends on the GitHub runner used by the workflow.
+The **Release binaries** workflow is manually dispatched from `main` with the existing version tag supplied as `release_tag` (for example, `v0.1.4`). It builds a console executable natively on Linux, Windows, and macOS, smoke-tests its version output, and attaches per-platform ZIP archives to the GitHub release. Native builds are used because PyInstaller executables are OS-specific; CPU architecture depends on the GitHub runner used by the workflow.
 
 The packaged CLI includes Python, TimbreDrop, yt-dlp and its EJS companion package. **FFmpeg/FFprobe and Deno are external runtime requirements and are not bundled.** Install them with a trusted operating-system package manager and put them on `PATH`. Run the matching executable with `--version` to verify that it starts, then check `RUNTIME_REQUIREMENTS.txt` in the release archive. The current workflow builds Linux x86_64, Windows x86_64, macOS Intel x86_64, and macOS Apple Silicon arm64 assets.
 
-The release archives include the project license, a third-party notice, and the third-party Python license files found during the release build. See `THIRD_PARTY_NOTICES.md`. The generated binaries are not yet available until a version tag is pushed and the release workflow succeeds.
+The release archives include the project license, a third-party notice, and the third-party Python license files found during the release build. See `THIRD_PARTY_NOTICES.md`. Standalone ZIPs are published separately: the matching version tag must exist and the manual **Release binaries** workflow must complete successfully.
 
 ### Build a standalone executable locally
 

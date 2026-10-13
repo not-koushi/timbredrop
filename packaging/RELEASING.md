@@ -17,11 +17,11 @@
 The standalone ZIPs bundle a Python runtime and yt-dlp resources, so they are
 much larger than the pure-Python Arch package. Tags no longer automatically
 build/publish these ZIPs. To intentionally publish native standalone binaries
-for an existing version tag, manually dispatch the **Release binaries** workflow
-on that tag, for example:
+for an existing version, manually dispatch the **Release binaries** workflow
+from `main`, passing the matching tag as `release_tag`. For example:
 
 ```bash
-gh workflow run release.yml --ref v0.1.4
+gh workflow run release.yml --ref main -f release_tag=v0.1.4
 ```
 
 The workflow builds on each target operating system. A successful build and a

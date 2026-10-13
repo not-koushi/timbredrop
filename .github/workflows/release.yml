@@ -2,6 +2,11 @@ name: Release binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing Git tag matching pyproject.toml
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,16 +19,25 @@ jobs:
       fail-fast: false
       matrix:
         runner: [ubuntu-22.04, windows-latest, macos-15-intel, macos-latest]
+
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
           cache: pip
+
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: python scripts/validate_release_tag.py
+
       - name: Install project and freezer
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[freeze]"
+
       - name: Build one-file console executable
         run: >-
           python -m PyInstaller --noconfirm --clean --onefile --console
@@ -32,12 +46,16 @@ jobs:
           --collect-all yt_dlp --collect-all yt_dlp_ejs
           --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs
           scripts/ytmp3_entry.py
+
       - name: Smoke-test executable
         run: python scripts/smoke_executable.py
+
       - name: Collect third-party license files
         run: python scripts/collect_licenses.py
+
       - name: Assemble release archive
         run: python scripts/package_release.py
+
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ runner.os }}-${{ runner.arch }}
@@ -49,17 +67,22 @@ jobs:
     name: Publish GitHub release
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-assets
           merge-multiple: true
+
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME" release-assets/*.zip
-          --title "TimbreDrop ${GITHUB_REF_NAME#v}"
-          --generate-notes
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/*.zip \
+            --verify-tag \
+            --title "TimbreDrop ${RELEASE_TAG#v}" \
+            --generate-notes
