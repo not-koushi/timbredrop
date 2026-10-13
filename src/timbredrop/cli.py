@@ -9,8 +9,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from timbredrop import __version__
 from timbredrop.config import ALLOWED_BITRATES, config_path, load_config, write_default_config
@@ -24,7 +25,6 @@ from timbredrop.media import (
     transcode_mp3,
 )
 from timbredrop.urls import validate_youtube_url
-
 
 CYAN = "36"
 GRAY = "90"
@@ -66,7 +66,7 @@ def _print_commands() -> None:
 
 
 def _yes_no(prompt: str, default: bool = False) -> bool:
-    choice_hint = "Y/n" if default else "Y/N"
+    choice_hint = "Y/n" if default else "y/N"
     while True:
         try:
             answer = input(f"{prompt} [{choice_hint}]: ").strip().lower()
@@ -196,65 +196,166 @@ def _process_one(
     return result
 
 
-def _open_config_file(path: Path) -> bool:
-    """Open the config in an available editor without invoking a shell.
+def _open_with_system_default(
+    path: Path,
+    *,
+    operating_system: str | None = None,
+    platform_name: str | None = None,
+) -> bool:
+    """Open a text file using the OS desktop's associated editor, if available.
 
-    Returns True when an editor command was launched. GUI openers may return
-    before the file is saved; config is therefore refreshed before each command.
+    On Linux, xdg-open delegates to the desktop's default application (e.g. Kate
+    on a KDE desktop). Windows uses the file association, and macOS asks Launch
+    Services for the default text editor. This function deliberately avoids
+    invoking a shell.
     """
-    editor_setting = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if editor_setting:
-        try:
-            command = shlex.split(editor_setting)
-        except ValueError as exc:
-            print(f"Invalid VISUAL/EDITOR setting: {exc}", file=sys.stderr)
+    operating_system = operating_system or os.name
+    platform_name = platform_name or sys.platform
+
+    if operating_system == "nt":
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
             return False
-        if command:
-            executable = shutil.which(command[0])
-            if executable:
-                try:
-                    subprocess.run([executable, *command[1:], str(path)], check=False)
-                    return True
-                except OSError as exc:
-                    print(f"Could not launch editor: {exc}", file=sys.stderr)
-                    return False
-            print(f"Editor not found: {command[0]}. Check VISUAL or EDITOR.", file=sys.stderr)
+        try:
+            startfile(str(path))
+            return True
+        except OSError as exc:
+            print(f"Could not open the config with its associated app: {exc}", file=sys.stderr)
             return False
 
-    if os.name == "nt":
-        executable = shutil.which("notepad.exe") or shutil.which("notepad")
-        if executable:
-            subprocess.run([executable, str(path)], check=False)
+    if platform_name == "darwin":
+        opener = shutil.which("open")
+        if not opener:
+            return False
+        try:
+            subprocess.Popen(
+                [opener, "-t", str(path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
             return True
-    elif sys.platform == "darwin":
-        executable = shutil.which("open")
-        if executable:
-            subprocess.run([executable, "-W", "-t", str(path)], check=False)
+        except OSError as exc:
+            print(f"Could not open the config with the default text editor: {exc}", file=sys.stderr)
+            return False
+
+    # Do not try to launch a GUI application from a headless Linux session.
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return False
+
+    opener = shutil.which("xdg-open")
+    if opener:
+        try:
+            subprocess.Popen(
+                [opener, str(path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
             return True
-    else:
+        except OSError as exc:
+            print(
+                f"Could not open the config with the desktop's default app: {exc}",
+                file=sys.stderr,
+            )
+
+    # gio is available on many GNOME/KDE Linux installations as a fallback.
+    gio = shutil.which("gio")
+    if gio:
+        try:
+            subprocess.Popen(
+                [gio, "open", str(path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return True
+        except OSError as exc:
+            print(f"Could not open the config with gio: {exc}", file=sys.stderr)
+    return False
+
+
+def _launch_config_editor_setting(path: Path, setting: str, variable_name: str) -> bool:
+    """Launch a user-specified editor command without shell interpretation."""
+    try:
+        command = shlex.split(setting)
+    except ValueError as exc:
+        print(f"Invalid {variable_name} setting: {exc}", file=sys.stderr)
+        return False
+    if not command:
+        return False
+
+    executable = shutil.which(command[0])
+    if not executable:
+        print(f"Editor not found: {command[0]} (from {variable_name}).", file=sys.stderr)
+        return False
+    try:
+        # Terminal editors run in the foreground so users can save and return.
+        subprocess.run([executable, *command[1:], str(path)], check=False)
+        return True
+    except OSError as exc:
+        print(f"Could not launch editor {command[0]}: {exc}", file=sys.stderr)
+        return False
+
+
+def _open_config_file(path: Path) -> bool:
+    """Open the config in the user's preferred editor without invoking a shell.
+
+    Priority:
+    1. TIMBREDROP_EDITOR, an explicit TimbreDrop-specific override.
+    2. The operating system's default text editor / file association.
+    3. VISUAL or EDITOR for terminal/headless sessions.
+    4. A common terminal editor as a last resort on Unix-like systems.
+
+    GUI launchers may return before the config is saved; config is refreshed
+    before each subsequent shell command.
+    """
+    explicit_editor = os.environ.get("TIMBREDROP_EDITOR")
+    if explicit_editor:
+        return _launch_config_editor_setting(path, explicit_editor, "TIMBREDROP_EDITOR")
+
+    if _open_with_system_default(path):
+        print(
+            "Opened the config with your system's default text editor. "
+            "Save it, then return here."
+        )
+        return True
+
+    for variable_name in ("VISUAL", "EDITOR"):
+        editor_setting = os.environ.get(variable_name)
+        if editor_setting and _launch_config_editor_setting(path, editor_setting, variable_name):
+            return True
+
+    # Terminal-only/headless fallback when no system desktop editor is available.
+    if os.name != "nt":
         for editor_name in ("nano", "micro", "vim", "vi"):
             executable = shutil.which(editor_name)
             if executable:
-                subprocess.run([executable, str(path)], check=False)
-                return True
+                try:
+                    subprocess.run([executable, str(path)], check=False)
+                    return True
+                except OSError as exc:
+                    print(f"Could not launch editor {editor_name}: {exc}", file=sys.stderr)
+                    return False
 
-        opener = shutil.which("xdg-open")
-        if opener:
+    # Notepad is available on standard Windows installations if file association
+    # launching was unavailable. It is not used when an OS association worked.
+    if os.name == "nt":
+        executable = shutil.which("notepad.exe") or shutil.which("notepad")
+        if executable:
             try:
-                subprocess.Popen(
-                    [opener, str(path)],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-                print("Opened the config in your desktop editor. Save it, then return here.")
+                subprocess.Popen([executable, str(path)])
                 return True
             except OSError as exc:
-                print(f"Could not open the config file: {exc}", file=sys.stderr)
-                return False
+                print(f"Could not launch Notepad: {exc}", file=sys.stderr)
 
-    print(f"No editor was found. Set EDITOR, then run 'path' again.\nConfig: {path}")
+    print(
+        "No suitable editor was found. Set TIMBREDROP_EDITOR to choose one, "
+        f"or set VISUAL/EDITOR for terminal use.\nConfig: {path}"
+    )
     return False
 
 
@@ -359,7 +460,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     while True:
         try:
-            raw_command = input(f"{_color('(ytmp3)', CYAN)} ").strip()
+            raw_command = input(f"{_color('(>_ ytmp3)', CYAN)} ").strip()
         except EOFError:
             print("\nGoodbye.")
             return 0

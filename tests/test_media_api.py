@@ -68,7 +68,6 @@ def test_fetch_video_info_rejects_playlist_results(monkeypatch):
 
 
 def test_download_audio_uses_audio_format_and_returns_file(monkeypatch, tmp_path):
-    hooks = []
     recorded_options = {}
     download_path = tmp_path / "source.webm"
 

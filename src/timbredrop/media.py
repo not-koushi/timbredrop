@@ -12,8 +12,9 @@ import threading
 import time
 import unicodedata
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from timbredrop.config import ALLOWED_BITRATES
 from timbredrop.errors import MissingDependencyError, TimbreDropError
@@ -49,7 +50,7 @@ def check_dependencies() -> tuple[str, str]:
     return ffmpeg, ffprobe
 
 
-def format_duration(seconds: float | int | None) -> str:
+def format_duration(seconds: float | None) -> str:
     if seconds is None or seconds < 0:
         return "unknown"
     whole = int(seconds)

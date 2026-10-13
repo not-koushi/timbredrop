@@ -1,7 +1,8 @@
 import pytest
 
 from timbredrop import cli
-from timbredrop.config import AppConfig, load_config as real_load_config
+from timbredrop.config import AppConfig
+from timbredrop.config import load_config as real_load_config
 
 
 def test_choose_bitrate_accepts_exact_value(monkeypatch):
@@ -155,3 +156,105 @@ def test_safe_terminal_text_removes_control_characters():
 def test_color_respects_no_color_environment(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
     assert cli._color("hello", cli.CYAN) == "hello"
+
+
+@pytest.mark.parametrize("platform_name", ["linux", "freebsd"])
+def test_system_default_uses_desktop_file_association_on_unix(monkeypatch, tmp_path, platform_name):
+    target = tmp_path / "config.toml"
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    launched = []
+    monkeypatch.setattr(
+        cli.shutil,
+        "which",
+        lambda name: "/usr/bin/xdg-open" if name == "xdg-open" else None,
+    )
+    monkeypatch.setattr(
+        cli.subprocess,
+        "Popen",
+        lambda args, **kwargs: launched.append((args, kwargs)),
+    )
+
+    assert cli._open_with_system_default(
+        target, operating_system="posix", platform_name=platform_name
+    ) is True
+    assert launched[0][0] == ["/usr/bin/xdg-open", str(target)]
+    assert launched[0][1]["start_new_session"] is True
+
+
+def test_system_default_uses_macos_text_editor(monkeypatch, tmp_path):
+    target = tmp_path / "config.toml"
+    launched = []
+    monkeypatch.setattr(
+        cli.shutil, "which", lambda name: "/usr/bin/open" if name == "open" else None
+    )
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda args, **kwargs: launched.append(args))
+
+    assert cli._open_with_system_default(
+        target, operating_system="posix", platform_name="darwin"
+    ) is True
+    assert launched == [["/usr/bin/open", "-t", str(target)]]
+
+
+def test_system_default_uses_windows_file_association(monkeypatch, tmp_path):
+    target = tmp_path / "config.toml"
+    opened = []
+    monkeypatch.setattr(cli.os, "startfile", lambda value: opened.append(value), raising=False)
+
+    assert cli._open_with_system_default(
+        target, operating_system="nt", platform_name="win32"
+    ) is True
+    assert opened == [str(target)]
+
+
+def test_path_editor_prefers_os_default_over_legacy_editor_variable(monkeypatch, tmp_path):
+    target = tmp_path / "config.toml"
+    monkeypatch.delenv("TIMBREDROP_EDITOR", raising=False)
+    monkeypatch.setenv("EDITOR", "nano")
+    monkeypatch.setenv("DISPLAY", ":0")
+    opened = []
+    monkeypatch.setattr(cli, "_open_with_system_default", lambda path: opened.append(path) or True)
+    monkeypatch.setattr(
+        cli.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("EDITOR should not win")
+    )
+
+    assert cli._open_config_file(target) is True
+    assert opened == [target]
+
+
+def test_timbredrop_editor_environment_override_has_priority(monkeypatch, tmp_path):
+    target = tmp_path / "config.toml"
+    monkeypatch.setenv("TIMBREDROP_EDITOR", "custom-editor --wait")
+    monkeypatch.setenv("EDITOR", "nano")
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_open_with_system_default",
+        lambda _path: pytest.fail("OS default should not win"),
+    )
+    monkeypatch.setattr(
+        cli.shutil,
+        "which",
+        lambda name: "/usr/bin/custom-editor" if name == "custom-editor" else None,
+    )
+    monkeypatch.setattr(cli.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    assert cli._open_config_file(target) is True
+    assert calls == [["/usr/bin/custom-editor", "--wait", str(target)]]
+
+
+def test_editor_environment_is_fallback_for_headless_session(monkeypatch, tmp_path):
+    target = tmp_path / "config.toml"
+    monkeypatch.delenv("TIMBREDROP_EDITOR", raising=False)
+    monkeypatch.setenv("EDITOR", "nano")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    calls = []
+    monkeypatch.setattr(cli, "_open_with_system_default", lambda _path: False)
+    monkeypatch.setattr(
+        cli.shutil, "which", lambda name: "/usr/bin/nano" if name == "nano" else None
+    )
+    monkeypatch.setattr(cli.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    assert cli._open_config_file(target) is True
+    assert calls == [["/usr/bin/nano", str(target)]]

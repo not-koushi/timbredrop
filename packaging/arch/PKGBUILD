@@ -1,0 +1,32 @@
+# Maintainer: TimbreDrop contributors
+pkgname=timbredrop
+pkgver=0.1.2
+pkgrel=1
+pkgdesc='Minimal cross-platform YouTube audio-to-MP3 CLI'
+arch=('any')
+url='https://github.com/not-koushi/timbredrop'
+license=('MIT')
+depends=('python>=3.11' 'python-platformdirs' 'yt-dlp' 'ffmpeg' 'deno')
+makedepends=('git' 'python-build' 'python-installer' 'python-setuptools')
+checkdepends=('python-pytest')
+source=("$pkgname::git+https://github.com/not-koushi/timbredrop.git#tag=v${pkgver}")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$srcdir/$pkgname"
+  PYTHONPATH="$PWD/src" python -m pytest -q
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 THIRD_PARTY_NOTICES.md \
+    "$pkgdir/usr/share/doc/$pkgname/THIRD_PARTY_NOTICES.md"
+}

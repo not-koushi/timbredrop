@@ -93,7 +93,7 @@ Example:
 
 After each conversion, TimbreDrop returns to the shell so another URL can be processed. Follow the prompts to confirm long or unknown durations and choose an output bitrate. Press Enter to accept the configured bitrate (256 kbps by default).
 
-The shell uses a muted cyan-and-gray accent only when stdout is an interactive terminal. Set `NO_COLOR=1` to disable ANSI colors. On Arch Linux, set `EDITOR=nano` (or your preferred editor) in the environment if you want `path` to open a terminal editor. If no terminal editor is configured, TimbreDrop tries the platform's usual text editor.
+The shell uses a muted cyan-and-gray accent only when stdout is an interactive terminal. Set `NO_COLOR=1` to disable ANSI colors. The `path` command first opens the configuration file with the operating system's default text editor (for example, Kate when Kate is the default text-file handler on KDE, the associated app on Windows, or the default text editor on macOS). If the session is headless or no desktop handler is available, TimbreDrop falls back to `VISUAL`/`EDITOR` and then a common terminal editor. Set `TIMBREDROP_EDITOR` to explicitly override editor selection, for example `TIMBREDROP_EDITOR="kate --new-window"`. Editor commands are launched without shell interpretation.
 
 Override the output directory for one session:
 
@@ -146,7 +146,7 @@ The selected bitrate is the output MP3's CBR target; it does **not** describe or
 
 ## Platform verification status
 
-The Linux unit test suite and FFmpeg MP3-encoding smoke tests have been run in the development environment. At least one user has verified that the interactive shell starts on Arch Linux; a complete live download should still be checked on each machine before relying on it. Windows and macOS are not yet verified; do not treat their install instructions as a tested release. Cross-platform CI and packaged binaries are planned for later phases.
+The Linux unit test suite and FFmpeg MP3-encoding smoke tests have been run in the development environment. An Arch Linux user has verified interactive shell startup and the default-editor workflow. This repository includes CI for tests on Linux, Windows, and macOS, plus release workflows for native builds; those workflows are not considered verified until they have run successfully on GitHub. A complete live download should still be checked on each operating system before claiming full platform support. No standalone release artifact is available until a version tag is pushed and the release workflow succeeds.
 
 ## Troubleshooting
 
@@ -176,3 +176,38 @@ Users are responsible for complying with applicable copyright law, YouTube's Ter
 ## License
 
 TimbreDrop is released under the MIT License. See [LICENSE](LICENSE). Third-party dependencies retain their own licenses; see each upstream project's documentation, particularly [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [FFmpeg](https://ffmpeg.org/legal.html).
+
+## Packaging and distribution
+
+### Standalone executables
+
+Tagged releases trigger the GitHub Actions workflow in `.github/workflows/release.yml`. It builds a console executable natively on Linux, Windows, and macOS, smoke-tests its version output, and attaches per-platform ZIP archives to the GitHub release. Native builds are used because PyInstaller executables are OS-specific; CPU architecture depends on the GitHub runner used by the workflow.
+
+The packaged CLI includes Python, TimbreDrop, yt-dlp and its EJS companion package. **FFmpeg/FFprobe and Deno are external runtime requirements and are not bundled.** Install them with a trusted operating-system package manager and put them on `PATH`. Run the matching executable with `--version` to verify that it starts, then check `RUNTIME_REQUIREMENTS.txt` in the release archive. The current workflow builds Linux x86_64, Windows x86_64, macOS Intel x86_64, and macOS Apple Silicon arm64 assets.
+
+The release archives include the project license, a third-party notice, and the third-party Python license files found during the release build. See `THIRD_PARTY_NOTICES.md`. The generated binaries are not yet available until a version tag is pushed and the release workflow succeeds.
+
+### Build a standalone executable locally
+
+```bash
+python -m pip install -e ".[freeze]"
+python -m PyInstaller --noconfirm --clean --onefile --console \
+  --name ytmp3 --paths src --specpath build/pyinstaller-spec \
+  --workpath build/pyinstaller-work --distpath dist \
+  --collect-all yt_dlp --collect-all yt_dlp_ejs \
+  --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs \
+  scripts/ytmp3_entry.py
+python scripts/smoke_executable.py
+python scripts/collect_licenses.py
+python scripts/package_release.py
+```
+
+Build separately on each target operating system; do not copy a Linux executable to Windows or macOS.
+
+### Arch Linux package
+
+See [`packaging/arch/README.md`](packaging/arch/README.md) and [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD). The release steps and tag trigger are documented in [`packaging/RELEASING.md`](packaging/RELEASING.md). This is an unofficial local PKGBUILD, not a package in the official Arch repositories and not yet published to the AUR. Build and inspect it locally before considering an AUR submission.
+
+### Cross-platform CI
+
+`.github/workflows/ci.yml` runs the unit tests on Linux, Windows, and macOS with Python 3.11–3.13, and performs a lint and wheel-build check on the Ubuntu runner. Passing CI verifies the automated suite and package metadata, but is not a substitute for testing a real permitted video download on each operating system.
